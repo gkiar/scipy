@@ -7,7 +7,6 @@ from warnings import warn
 import operator
 
 import numpy as np
-from scipy._lib.six import zip as izip, xrange
 from scipy._lib._util import _prune_array
 
 from .base import spmatrix, isspmatrix, SparseEfficiencyWarning
@@ -20,11 +19,12 @@ from ._sparsetools import (get_csr_submatrix, csr_sample_offsets, csr_todense,
 from ._index import IndexMixin
 from .sputils import (upcast, upcast_char, to_native, isdense, isshape,
                       getdtype, isscalarlike, isintlike, get_index_dtype,
-                      downcast_intp_index, get_sum_dtype, check_shape)
+                      downcast_intp_index, get_sum_dtype, check_shape,
+                      matrix, asmatrix, is_pydata_spmatrix)
 
 
 class _cs_matrix(_data_matrix, _minmax_mixin, IndexMixin):
-    """base matrix class for compressed row and column oriented matrices"""
+    """base matrix class for compressed row- and column-oriented matrices"""
 
     def __init__(self, arg1, shape=None, dtype=None, copy=False):
         _data_matrix.__init__(self)
@@ -231,6 +231,9 @@ class _cs_matrix(_data_matrix, _minmax_mixin, IndexMixin):
         # Dense other.
         elif isdense(other):
             return self.todense() == other
+        # Pydata sparse other.
+        elif is_pydata_spmatrix(other):
+            return NotImplemented
         # Sparse other.
         elif isspmatrix(other):
             warn("Comparing sparse matrices using == is inefficient, try using"
@@ -266,6 +269,9 @@ class _cs_matrix(_data_matrix, _minmax_mixin, IndexMixin):
         # Dense other.
         elif isdense(other):
             return self.todense() != other
+        # Pydata sparse other.
+        elif is_pydata_spmatrix(other):
+            return NotImplemented
         # Sparse other.
         elif isspmatrix(other):
             # TODO sparse broadcasting
@@ -348,7 +354,7 @@ class _cs_matrix(_data_matrix, _minmax_mixin, IndexMixin):
         M, N = self._swap(self.shape)
         y = result if result.flags.c_contiguous else result.T
         csr_todense(M, N, self.indptr, self.indices, self.data, y)
-        return np.matrix(result, copy=False)
+        return matrix(result, copy=False)
 
     def _add_sparse(self, other):
         return self._binopt(other, '_plus_')
@@ -596,7 +602,7 @@ class _cs_matrix(_data_matrix, _minmax_mixin, IndexMixin):
 
             major_index, value = self._minor_reduce(np.add)
             ret[major_index] = value
-            ret = np.asmatrix(ret)
+            ret = asmatrix(ret)
             if axis % 2 == 1:
                 ret = ret.T
 
@@ -643,7 +649,7 @@ class _cs_matrix(_data_matrix, _minmax_mixin, IndexMixin):
         indptr, indices, data = get_csr_submatrix(
             M, N, self.indptr, self.indices, self.data,
             major, major + 1, minor, minor + 1)
-        return np.array(data.sum(), dtype=self.dtype)
+        return data.sum(dtype=self.dtype)
 
     def _get_sliceXslice(self, row, col):
         major, minor = self._swap((row, col))
@@ -663,7 +669,7 @@ class _cs_matrix(_data_matrix, _minmax_mixin, IndexMixin):
         csr_sample_values(M, N, self.indptr, self.indices, self.data,
                           major.size, major.ravel(), minor.ravel(), val)
         if major.ndim == 1:
-            return np.asmatrix(val)
+            return asmatrix(val)
         return self.__class__(val.reshape(major.shape))
 
     def _get_columnXarray(self, row, col):
@@ -705,7 +711,7 @@ class _cs_matrix(_data_matrix, _minmax_mixin, IndexMixin):
 
         M, N = self._swap(self.shape)
         start, stop, step = idx.indices(M)
-        M = len(xrange(start, stop, step))
+        M = len(range(start, stop, step))
         new_shape = self._swap((M, N))
         if M == 0:
             return self.__class__(new_shape)
@@ -765,7 +771,7 @@ class _cs_matrix(_data_matrix, _minmax_mixin, IndexMixin):
 
         M, N = self._swap(self.shape)
         start, stop, step = idx.indices(N)
-        N = len(xrange(start, stop, step))
+        N = len(range(start, stop, step))
         if N == 0:
             return self.__class__(self._swap((M, N)))
         if step == 1:
@@ -781,6 +787,7 @@ class _cs_matrix(_data_matrix, _minmax_mixin, IndexMixin):
         M, N = self._swap(self.shape)
         i0, i1 = _process_slice(major, M)
         j0, j1 = _process_slice(minor, N)
+
         if i0 == 0 and j0 == 0 and i1 == M and j1 == N:
             return self.copy() if copy else self
 
@@ -959,7 +966,7 @@ class _cs_matrix(_data_matrix, _minmax_mixin, IndexMixin):
         ui_indptr = np.append(ui_indptr, len(j))
         new_nnzs = np.diff(ui_indptr)
         prev = 0
-        for c, (ii, js, je) in enumerate(izip(ui, ui_indptr, ui_indptr[1:])):
+        for c, (ii, js, je) in enumerate(zip(ui, ui_indptr, ui_indptr[1:])):
             # old entries
             start = self.indptr[prev]
             stop = self.indptr[ii]
@@ -1259,7 +1266,7 @@ class _cs_matrix(_data_matrix, _minmax_mixin, IndexMixin):
             out[row, col] = 0
             r = r.tocoo()
             out[r.row, r.col] = r.data
-            out = np.matrix(out)
+            out = matrix(out)
         else:
             # integers types go with nan <-> 0
             out = r
@@ -1274,6 +1281,7 @@ def _process_slice(sl, num):
         i0, i1, stride = sl.indices(num)
         if stride != 1:
             raise ValueError('slicing with step != 1 not supported')
+        i0 = min(i0, i1)  # give an empty slice when i0 > i1
     elif isintlike(sl):
         if sl < 0:
             sl += num

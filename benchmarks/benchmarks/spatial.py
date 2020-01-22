@@ -110,6 +110,7 @@ class Radius(LimitedParamBenchmark):
                                                     (8,1000,30),
                                                     (16,1000,30)]
         self.time_query_ball_point.__func__.setup = self.setup_query_ball_point
+        self.time_query_ball_point_nosort.__func__.setup = self.setup_query_ball_point
         self.time_query_pairs.__func__.setup = self.setup_query_pairs
 
     def setup(self, *args):
@@ -225,12 +226,12 @@ class CNeighbors(Benchmark):
         self.T1s.count_neighbors(self.T2s, self.r)
 
 def generate_spherical_points(num_points):
-        # generate uniform points on sphere
-        # see: https://stackoverflow.com/a/23785326
-        np.random.seed(123)
-        points = np.random.normal(size=(num_points, 3))
-        points /= np.linalg.norm(points, axis=1)[:, np.newaxis]
-        return points
+    # generate uniform points on sphere
+    # see: https://stackoverflow.com/a/23785326
+    np.random.seed(123)
+    points = np.random.normal(size=(num_points, 3))
+    points /= np.linalg.norm(points, axis=1)[:, np.newaxis]
+    return points
 
 class SphericalVor(Benchmark):
     params = [10, 100, 1000, 5000, 10000]
@@ -331,4 +332,3 @@ class Hausdorff(Benchmark):
     def time_directed_hausdorff(self, num_points):
         # time directed_hausdorff code in 3 D
         distance.directed_hausdorff(self.points1, self.points2)
-

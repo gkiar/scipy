@@ -23,15 +23,14 @@ from __future__ import division, print_function, absolute_import
 import warnings
 
 # SciPy imports.
-from scipy._lib.six import callable, string_types
 from scipy import linalg, special
 from scipy.special import logsumexp
-from scipy._lib._numpy_compat import cov
+from scipy._lib._util import check_random_state
 
-from numpy import (atleast_2d, reshape, zeros, newaxis, dot, exp, pi, sqrt,
-                   ravel, power, atleast_1d, squeeze, sum, transpose, ones)
+from numpy import (asarray, atleast_2d, reshape, zeros, newaxis, dot, exp, pi,
+                   sqrt, ravel, power, atleast_1d, squeeze, sum, transpose,
+                   ones, cov)
 import numpy as np
-from numpy.random import choice, multivariate_normal
 
 # Local imports.
 from . import mvn
@@ -190,7 +189,7 @@ class gaussian_kde(object):
 
     """
     def __init__(self, dataset, bw_method=None, weights=None):
-        self.dataset = atleast_2d(dataset)
+        self.dataset = atleast_2d(asarray(dataset))
         if not self.dataset.size > 1:
             raise ValueError("`dataset` input should have multiple elements.")
 
@@ -227,7 +226,7 @@ class gaussian_kde(object):
                      the dimensionality of the KDE.
 
         """
-        points = atleast_2d(points)
+        points = atleast_2d(asarray(points))
 
         d, m = points.shape
         if d != self.d:
@@ -259,7 +258,7 @@ class gaussian_kde(object):
                 energy = sum(diff * diff, axis=0) / 2.0
                 result[i] = sum(exp(-energy)*self.weights, axis=0)
 
-        result = result * self.n / self._norm_factor
+        result = result / self._norm_factor
 
         return result
 
@@ -436,7 +435,7 @@ class gaussian_kde(object):
 
         return result
 
-    def resample(self, size=None):
+    def resample(self, size=None, seed=None):
         """
         Randomly sample a dataset from the estimated pdf.
 
@@ -446,6 +445,14 @@ class gaussian_kde(object):
             The number of samples to draw.  If not provided, then the size is
             the same as the effective number of samples in the underlying
             dataset.
+        seed : None or int or `np.random.RandomState`, optional
+            If `seed` is None, random variates are drawn by the RandomState
+            singleton used by np.random.
+            If `seed` is an int, a new `np.random.RandomState` instance is used,
+            seeded with seed.
+            If `seed` is already a `np.random.RandomState instance`, then that
+            `np.random.RandomState` instance is used.
+            Specify `seed` for reproducible drawing of random variates.
 
         Returns
         -------
@@ -456,9 +463,11 @@ class gaussian_kde(object):
         if size is None:
             size = int(self.neff)
 
-        norm = transpose(multivariate_normal(zeros((self.d,), float),
-                                             self.covariance, size=size))
-        indices = choice(self.n, size=size, p=self.weights)
+        random_state = check_random_state(seed)
+        norm = transpose(random_state.multivariate_normal(
+            zeros((self.d,), float), self.covariance, size=size
+        ))
+        indices = random_state.choice(self.n, size=size, p=self.weights)
         means = self.dataset[:, indices]
 
         return means + norm
@@ -525,7 +534,7 @@ class gaussian_kde(object):
 
         >>> import matplotlib.pyplot as plt
         >>> fig, ax = plt.subplots()
-        >>> ax.plot(x1, np.ones(x1.shape) / (4. * x1.size), 'bo',
+        >>> ax.plot(x1, np.full(x1.shape, 1 / (4. * x1.size)), 'bo',
         ...         label='Data points (rescaled)')
         >>> ax.plot(xs, y1, label='Scott (default)')
         >>> ax.plot(xs, y2, label='Silverman')
@@ -540,7 +549,7 @@ class gaussian_kde(object):
             self.covariance_factor = self.scotts_factor
         elif bw_method == 'silverman':
             self.covariance_factor = self.silverman_factor
-        elif np.isscalar(bw_method) and not isinstance(bw_method, string_types):
+        elif np.isscalar(bw_method) and not isinstance(bw_method, str):
             self._bw_method = 'use constant'
             self.covariance_factor = lambda: bw_method
         elif callable(bw_method):
@@ -567,7 +576,7 @@ class gaussian_kde(object):
 
         self.covariance = self._data_covariance * self.factor**2
         self.inv_cov = self._data_inv_cov / self.factor**2
-        self._norm_factor = sqrt(linalg.det(2*pi*self.covariance)) * self.n
+        self._norm_factor = sqrt(linalg.det(2*pi*self.covariance))
 
     def pdf(self, x):
         """
@@ -599,8 +608,6 @@ class gaussian_kde(object):
                     self.d)
                 raise ValueError(msg)
 
-        result = zeros((m,), dtype=float)
-
         if m >= self.n:
             # there are more points than data, so loop over data
             energy = zeros((self.n, m), dtype=float)
@@ -608,17 +615,17 @@ class gaussian_kde(object):
                 diff = self.dataset[:, i, newaxis] - points
                 tdiff = dot(self.inv_cov, diff)
                 energy[i] = sum(diff*tdiff, axis=0) / 2.0
-            result = logsumexp(-energy,
-                               b=self.weights[i]*self.n/self._norm_factor,
-                               axis=0)
+            result = logsumexp(-energy.T,
+                               b=self.weights / self._norm_factor, axis=1)
         else:
             # loop over points
+            result = zeros((m,), dtype=float)
             for i in range(m):
                 diff = self.dataset - points[:, i, newaxis]
                 tdiff = dot(self.inv_cov, diff)
                 energy = sum(diff * tdiff, axis=0) / 2.0
-                result[i] = logsumexp(-energy,
-                                      b=self.weights*self.n/self._norm_factor)
+                result[i] = logsumexp(-energy, b=self.weights / 
+                                      self._norm_factor)
 
         return result
 

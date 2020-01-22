@@ -23,7 +23,7 @@ __all__ = [
 
 import warnings
 
-from numpy import zeros, concatenate, alltrue, ravel, all, diff, array, ones
+from numpy import zeros, concatenate, ravel, diff, array, ones
 import numpy as np
 
 from . import fitpack
@@ -69,7 +69,7 @@ _extrap_modes = {0: 0, 'extrapolate': 0,
 
 class UnivariateSpline(object):
     """
-    One-dimensional smoothing spline fit to a given set of data points.
+    1-D smoothing spline fit to a given set of data points.
 
     Fits a spline y = spl(x) of degree `k` to the provided `x`, `y` data.  `s`
     specifies the number of knots by specifying a smoothing condition.
@@ -77,7 +77,8 @@ class UnivariateSpline(object):
     Parameters
     ----------
     x : (N,) array_like
-        1-D array of independent input data. Must be increasing.
+        1-D array of independent input data. Must be increasing;
+        must be strictly increasing if `s` is 0.
     y : (N,) array_like
         1-D array of dependent input data, of the same length as `x`.
     w : (N,) array_like, optional
@@ -131,7 +132,7 @@ class UnivariateSpline(object):
 
     **NaN handling**: If the input arrays contain ``nan`` values, the result
     is not useful, since the underlying spline fitting routines cannot deal
-    with ``nan`` . A workaround is to use zero weights for not-a-number
+    with ``nan``. A workaround is to use zero weights for not-a-number
     data points:
 
     >>> from scipy.interpolate import UnivariateSpline
@@ -173,8 +174,12 @@ class UnivariateSpline(object):
                     not w_finite):
                 raise ValueError("x and y array must not contain "
                                  "NaNs or infs.")
-        if not all(diff(x) > 0.0):
-            raise ValueError('x must be strictly increasing')
+        if s is None or s > 0:
+            if not np.all(diff(x) >= 0.0):
+                raise ValueError("x must be increasing if s > 0")
+        else:
+            if not np.all(diff(x) > 0.0):
+                raise ValueError("x must be strictly increasing if s = 0")
 
         # _data == x,y,w,xb,xe,k,s,n,t,c,fp,fpint,nrdata,ier
         try:
@@ -461,7 +466,9 @@ class UnivariateSpline(object):
 
         """
         tck = fitpack.splder(self._eval_args, n)
-        return UnivariateSpline._from_tck(tck, self.ext)
+        # if self.ext is 'const', derivative.ext will be 'zeros'
+        ext = 1 if self.ext == 3 else self.ext
+        return UnivariateSpline._from_tck(tck, ext=ext)
 
     def antiderivative(self, n=1):
         """
@@ -520,7 +527,7 @@ class UnivariateSpline(object):
 
 class InterpolatedUnivariateSpline(UnivariateSpline):
     """
-    One-dimensional interpolating spline for a given set of data points.
+    1-D interpolating spline for a given set of data points.
 
     Fits a spline y = spl(x) of degree `k` to the provided `x`, `y` data.
     Spline function passes through all provided points. Equivalent to
@@ -529,7 +536,7 @@ class InterpolatedUnivariateSpline(UnivariateSpline):
     Parameters
     ----------
     x : (N,) array_like
-        Input dimension of data points -- must be increasing
+        Input dimension of data points -- must be strictly increasing
     y : (N,) array_like
         input dimension of data points
     w : (N,) array_like, optional
@@ -597,7 +604,7 @@ class InterpolatedUnivariateSpline(UnivariateSpline):
             if (not np.isfinite(x).all() or not np.isfinite(y).all() or
                     not w_finite):
                 raise ValueError("Input must not contain NaNs or infs.")
-        if not all(diff(x) > 0.0):
+        if not np.all(diff(x) > 0.0):
             raise ValueError('x must be strictly increasing')
 
         # _data == x,y,w,xb,xe,k,s,n,t,c,fp,fpint,nrdata,ier
@@ -628,7 +635,7 @@ This means that at least one of the following conditions is violated:
 
 class LSQUnivariateSpline(UnivariateSpline):
     """
-    One-dimensional spline with explicit internal knots.
+    1-D spline with explicit internal knots.
 
     Fits a spline y = spl(x) of degree `k` to the provided `x`, `y` data.  `t`
     specifies the internal knots of the spline
@@ -645,7 +652,7 @@ class LSQUnivariateSpline(UnivariateSpline):
             bbox[0] < t[0] < ... < t[-1] < bbox[-1]
 
     w : (N,) array_like, optional
-        weights for spline fitting.  Must be positive.  If None (default),
+        weights for spline fitting. Must be positive. If None (default),
         weights are all equal.
     bbox : (2,) array_like, optional
         2-sequence specifying the boundary of the approximation interval. If
@@ -736,8 +743,8 @@ class LSQUnivariateSpline(UnivariateSpline):
             if (not np.isfinite(x).all() or not np.isfinite(y).all() or
                     not w_finite or not np.isfinite(t).all()):
                 raise ValueError("Input(s) must not contain NaNs or infs.")
-        if not all(diff(x) > 0.0):
-            raise ValueError('x must be strictly increasing')
+        if not np.all(diff(x) >= 0.0):
+            raise ValueError('x must be increasing')
 
         # _data == x,y,w,xb,xe,k,s,n,t,c,fp,fpint,nrdata,ier
         xb = bbox[0]
@@ -748,7 +755,7 @@ class LSQUnivariateSpline(UnivariateSpline):
             xe = x[-1]
         t = concatenate(([xb]*(k+1), t, [xe]*(k+1)))
         n = len(t)
-        if not alltrue(t[k+1:n-k]-t[k:n-k-1] > 0, axis=0):
+        if not np.all(t[k+1:n-k]-t[k:n-k-1] > 0, axis=0):
             raise ValueError('Interior knots t must satisfy '
                              'Schoenberg-Whitney conditions')
         if not dfitpack.fpchec(x, t, k) == 0:
@@ -1163,9 +1170,9 @@ class RectBivariateSpline(BivariateSpline):
 
     def __init__(self, x, y, z, bbox=[None] * 4, kx=3, ky=3, s=0):
         x, y = ravel(x), ravel(y)
-        if not all(diff(x) > 0.0):
+        if not np.all(diff(x) > 0.0):
             raise ValueError('x must be strictly increasing')
-        if not all(diff(y) > 0.0):
+        if not np.all(diff(y) > 0.0):
             raise ValueError('y must be strictly increasing')
         if not ((x.min() == x[0]) and (x.max() == x[-1])):
             raise ValueError('x must be strictly ascending')
@@ -1393,6 +1400,9 @@ class LSQSphereBivariateSpline(SphereBivariateSpline):
     """
     Weighted least-squares bivariate spline approximation in spherical
     coordinates.
+
+    Determines a smooth bicubic spline according to a given
+    set of knots in the `theta` and `phi` directions.
 
     .. versionadded:: 0.11.0
 

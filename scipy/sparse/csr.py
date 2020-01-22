@@ -7,7 +7,6 @@ __docformat__ = "restructuredtext en"
 __all__ = ['csr_matrix', 'isspmatrix_csr']
 
 import numpy as np
-from scipy._lib.six import xrange
 
 from .base import spmatrix
 from ._sparsetools import (csr_tocsc, csr_tobsr, csr_count_blocks,
@@ -52,7 +51,7 @@ class csr_matrix(_cs_matrix):
     ndim : int
         Number of dimensions (this is always 2)
     nnz
-        Number of nonzero elements
+        Number of stored values, including explicit zeros
     data
         CSR format data array of the matrix
     indices
@@ -147,7 +146,7 @@ class csr_matrix(_cs_matrix):
         ptr,ind,dat = self.indptr,self.indices,self.data
         rows, data = lil.rows, lil.data
 
-        for n in xrange(self.shape[0]):
+        for n in range(self.shape[0]):
             start = ptr[n]
             end = ptr[n+1]
             rows[n] = ind[start:end].tolist()

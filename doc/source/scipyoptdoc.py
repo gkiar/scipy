@@ -39,14 +39,9 @@ from sphinx.domains.python import PythonDomain
 from scipy._lib._util import getargspec_no_self
 
 
-if sys.version_info[0] >= 3:
-    sixu = lambda s: s
-else:
-    sixu = lambda s: unicode(s, 'unicode_escape')
-
-
 def setup(app):
     app.add_domain(ScipyOptimizeInterfaceDomain)
+    return {'parallel_read_safe': True}
 
 
 def _option_required_str(x):
