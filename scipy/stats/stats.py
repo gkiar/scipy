@@ -7357,3 +7357,83 @@ def rankdata(a, method='average'):
 
     # average method
     return .5 * (count[dense] + count[dense - 1] + 1)
+
+
+def sigdig(a, limits=None, inclusive=(True, True), axis=0, ddof=1):
+    """
+    Compute the number of significant digits present in repeated estimates
+    of a signal.
+
+    This function uses the sample standard deviation and sample mean of given
+    values and estimates the number of significant digits in the estimates, as
+    defined by [1]:
+
+    .. math::
+
+        s = - \log_\beta\frac{\sigma}{\lvert\mu\rvert}
+
+
+    p is a positive parameter; p = 1 gives the Wasserstein distance, p = 2
+    gives the energy distance.
+
+
+    Parameters
+    ----------
+    a : array_like
+        Array of values.
+    limits : None or (lower limit, upper limit), optional
+        Values in the input array less than the lower limit or greater than the
+        upper limit will be ignored. When limits is None, then all values are
+        used. Either of the limit values in the tuple can also be None
+        representing a half-open interval.  The default value is None.
+    inclusive : (bool, bool), optional
+        A tuple consisting of the (lower flag, upper flag).  These flags
+        determine whether values exactly equal to the lower or upper limits
+        are included.  The default value is (True, True).
+    axis : int or None, optional
+        Axis along which to operate. Default is 0. If None, compute over the
+        whole array `a`.
+    ddof : int, optional
+        Delta degrees of freedom.  Default is 1.
+
+    Returns
+    -------
+    tstd : float
+        Trimmed sample standard deviation.
+
+    Notes
+    -----
+    The returned value is the number of significant digits in the given base,
+    default as base 10. If the user would like the number of significant bits
+    base 2 should be used.
+
+    References
+    ----------
+    .. [1] Scott Parker. Monte carlo arithmetic: exploiting randomness in
+           floating-point arithmetic. Technical Report CSD-970002, UCLA Computer
+           Science Dept., 1997.
+
+    Examples
+    --------
+    >>> from scipy import stats
+    >>> x = np.arange(20)
+    >>> stats.tstd(x)
+    5.9160797830996161
+    >>> stats.tstd(x, (3,17))
+    4.4721359549995796
+
+    """
+    dtype = a.dtype.
+    try:
+        eps = a.dtype.eps
+    if dtype in [np.int16, np.float16]:
+        eps = np.finfo(np.float16).eps
+    else:
+        eps = np.finfo(np.float32).eps
+    dat = im.get_data()
+    sigs = -np.log2(np.std(dat, axis=3) / np.mean(dat, axis=3) + eps)
+    sigs = np.nan_to_num(sigs)
+    sigs[sigs < 0] == 0
+    sig_image = nib.Nifti1Image(sigs, im.affine, im.header)
+    return sig_image
+    return np.sqrt(tvar(a, limits, inclusive, axis, ddof))
